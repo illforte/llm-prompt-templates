@@ -1,10 +1,11 @@
 <!-- PROMPT_METADATA
-version: 1.0
-iteration_count: 1
-last_model: Claude Opus 4
-last_date: 2026-04-01
+version: 1.1
+iteration_count: 2
+last_model: Claude Opus 4.6
+last_date: 2026-04-07
 changelog:
   - v1.0 (2026-04-01, Claude Opus 4): Initial creation — 8-phase plugin creation workflow with confidence loops
+  - v1.1 (2026-04-07, Claude Opus 4.6): Real-world fixes — SKILL.md root symlink, Claude Code registration, Python 3.10+ venv, workspace data dir routing, workspace symlink pattern
 -->
 
 # Claude Plugin Creation Manual
@@ -69,6 +70,7 @@ Create `_AUDIT.md` (temporary, will be gitignored) with all findings.
 
 ```
 plugin-name/
+├── SKILL.md                     # Symlink → skills/plugin-name/SKILL.md (REQUIRED for Claude Code)
 ├── .claude-plugin/
 │   └── plugin.json              # Plugin manifest (REQUIRED)
 ├── skills/
@@ -77,7 +79,7 @@ plugin-name/
 │       └── SKILL_SLIM.md        # Compact version for token efficiency (RECOMMENDED)
 ├── mcp/
 │   ├── server.py                # MCP server (if applicable)
-│   └── requirements.txt         # Python dependencies for MCP
+│   └── requirements.txt         # Python dependencies for MCP (needs Python 3.10+)
 ├── scripts/
 │   ├── config_loader.py         # Config loading with data dir isolation
 │   ├── persona_config.template.json  # Config template (committed)
@@ -99,6 +101,19 @@ plugin-name/
 - **Scripts go in `scripts/`** — all Python logic, utilities, config loading.
 - **References go in `references/`** — templates, static assets, architecture docs.
 - **Internal docs are gitignored** — setup guides, implementation notes with company data stay local.
+
+### Critical: SKILL.md Root Symlink
+
+Claude Code discovers skills by looking for `SKILL.md` at `<skill-root>/SKILL.md`. Since your actual SKILL.md lives in `skills/plugin-name/SKILL.md`, you must create a symlink at the plugin root:
+
+```zsh
+# From inside the plugin directory:
+ln -s skills/plugin-name/SKILL.md SKILL.md
+```
+
+This symlink IS committed to the repo (it's safe — it only contains a relative path). The installer script should create it automatically (see Phase 6).
+
+**Without this symlink, the skill will not appear in Claude Code's skill list.**
 
 ### plugin.json Template
 
@@ -131,11 +146,54 @@ plugin-name/
 
 **Variables**: `${CLAUDE_PLUGIN_ROOT}` = plugin install directory. `${CLAUDE_PLUGIN_DATA}` = persistent user data directory (outside the plugin tree).
 
+### Multi-Skill Plugins
+
+Some plugins contain multiple sub-skills (e.g., a pipeline with distinct phases). In this case:
+
+```
+plugin-name/
+├── SKILL.md                    # Symlink to the MAIN orchestrator skill
+├── skills/
+│   ├── main-skill/             # Orchestrator (referenced by root SKILL.md)
+│   │   └── SKILL.md
+│   ├── sub-skill-a/            # Phase/module skill
+│   │   └── SKILL.md
+│   └── sub-skill-b/
+│       └── SKILL.md
+```
+
+The root `SKILL.md` symlink should point to the **main orchestrator** skill, which then references sub-skills in its workflow. The sub-skills are loaded by Claude when the orchestrator's instructions reference them — they don't need individual root symlinks.
+
+In `plugin.json`, list all skills:
+
+```json
+"skills": [
+    "./skills/main-skill",
+    "./skills/sub-skill-a",
+    "./skills/sub-skill-b"
+]
+```
+
+### Workspace Integration Pattern
+
+Plugins are typically stored in a development repo (`~/dev-repos/plugin-name/`) and linked into one or more Claude Code workspaces:
+
+```zsh
+# Link plugin into a workspace
+ln -s ~/dev-repos/plugin-name ~/my-workspace/.claude/skills/plugin-name
+```
+
+This symlink means:
+- The dev repo stays in `~/dev-repos/` and can be committed to git
+- The workspace sees the plugin in `.claude/skills/plugin-name/`
+- Runtime data must NOT go into the dev repo (covered in Phase 2)
+
 ### Success Criteria
 
 - [ ] All files in correct directories
 - [ ] `plugin.json` valid and complete
 - [ ] Skills in `skills/plugin-name/` with YAML frontmatter
+- [ ] `SKILL.md` symlink created at plugin root: `SKILL.md → skills/plugin-name/SKILL.md`
 - [ ] No orphaned files
 
 ---
@@ -412,6 +470,8 @@ pydantic>=2.0.0
 httpx>=0.25.0
 ```
 
+**Important**: The `mcp` package requires Python 3.10+. On macOS, the system Python is 3.9 and cannot install this package. See Phase 6 for the multi-strategy installer pattern that handles this.
+
 ### Success Criteria
 
 - [ ] MCP server compiles: `python3 -c "import py_compile; py_compile.compile('mcp/server.py', doraise=True)"`
@@ -425,42 +485,226 @@ httpx>=0.25.0
 
 ## Phase 6: Installer Script
 
-**Goal**: One-command setup that works on a fresh macOS machine.
+**Goal**: One-command setup that works on a fresh macOS machine, for both Claude Desktop and Claude Code, with workspace-local data routing.
 
 ### install_plugin.sh Template
 
 ```zsh
 #!/usr/bin/env zsh
 # Plugin Name — Installer
+# Version: X.Y.Z
+# Usage:
+#   zsh install_plugin.sh                          # Full install
+#   zsh install_plugin.sh --workspace /path/to/ws  # Install with workspace data dir
+#   zsh install_plugin.sh --check                  # Verify installation
+#   zsh install_plugin.sh --uninstall              # Remove from Claude config
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_NAME="your-plugin-name"
+MCP_KEY="your_mcp_server"
+MCP_SERVER="$SCRIPT_DIR/mcp/server.py"
+SCRIPTS_DIR="$SCRIPT_DIR/scripts"
 
-# ... (validate paths, check Python, create venv, install deps,
-#      register MCP in Claude config, run setup wizard, verify API keys,
-#      run self-test)
+# Claude Desktop config
+CLAUDE_CONFIG_DIR="$HOME/Library/Application Support/Claude"
+CLAUDE_CONFIG="$CLAUDE_CONFIG_DIR/claude_desktop_config.json"
+# Claude Code config (different location!)
+CLAUDE_CODE_CONFIG="$HOME/.claude/settings.json"
 ```
 
-### Installer Responsibilities
+### Installer Responsibilities (in order)
 
-1. Validate directory structure
-2. Check Python 3 availability
-3. Create venv + install dependencies (with fallback strategies: venv → user → brew)
-4. Validate MCP server compiles
-5. Register MCP server in Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`)
-6. Auto-detect or interactively create user config
-7. Verify API key availability (file → keychain → env var)
-8. Run post-install self-test
-9. Print next steps
+1. **Validate paths** — confirm `mcp/`, `scripts/`, MCP server file exist
+2. **Detect workspace** — find which Claude Code workspace links to this plugin
+3. **Set data dir** — route runtime data to workspace (not dev repo)
+4. **Check Python** — detect version, warn if < 3.10 (macOS system Python is 3.9)
+5. **Install dependencies** — multi-strategy: venv → user → brew (critical, see below)
+6. **Create SKILL.md symlink** — ensure skill is discoverable by Claude Code
+7. **Validate MCP server** — compile check
+8. **Register in Claude Desktop** — `~/Library/Application Support/Claude/claude_desktop_config.json`
+9. **Register in Claude Code** — `~/.claude/settings.json` with `"trust": true`
+10. **Both registrations must include `PLUGINNAME_DATA_DIR` env var** pointing to workspace data dir
+11. **Setup config** — auto-detect or create user config in data dir
+12. **Verify API keys** — file → keychain → env var
+13. **Run self-test** — with `PLUGINNAME_DATA_DIR` set to the workspace data dir
+14. **Print next steps** — include data dir path
+
+### Python Version: Critical Detail
+
+The `mcp` Python package requires **Python 3.10+**. macOS ships with Python 3.9 as system Python, which cannot install `mcp`. The installer MUST handle this:
+
+```zsh
+PY_VERSION=$(python3 --version 2>&1 | cut -d' ' -f2)
+PY_MINOR=$(echo "$PY_VERSION" | cut -d. -f2)
+
+# Warn on system Python 3.9 — will need venv with newer Python
+if [ "$PY_MINOR" -lt 10 ]; then
+    warn "System Python $PY_VERSION — need 3.10+ for 'mcp' package"
+fi
+```
+
+**Multi-strategy dependency installation** (handles system Python 3.9):
+
+```zsh
+VENV_DIR="$SCRIPT_DIR/.venv"
+PYTHON_CMD="python3"
+
+install_deps() {
+    local method=$1
+    case $method in
+        "venv")
+            python3 -m venv "$VENV_DIR" 2>/dev/null || return 1
+            source "$VENV_DIR/bin/activate"
+            pip install -q mcp pydantic httpx 2>&1 || { deactivate; return 1; }
+            PYTHON_CMD="$VENV_DIR/bin/python3"
+            deactivate; return 0 ;;
+        "user")
+            pip3 install --user -q mcp pydantic httpx && return 0 || return 1 ;;
+        "brew")
+            # Try installed Homebrew Pythons (3.13, 3.12, 3.11)
+            for ver in python@3.13 python@3.12 python@3.11; do
+                BREW_PY="$(brew --prefix $ver 2>/dev/null)/bin/python3"
+                [ -f "$BREW_PY" ] || continue
+                "$BREW_PY" -m venv "$VENV_DIR" && \
+                source "$VENV_DIR/bin/activate" && \
+                pip install -q mcp pydantic httpx && \
+                PYTHON_CMD="$VENV_DIR/bin/python3" && \
+                deactivate && return 0
+                deactivate 2>/dev/null
+            done
+            return 1 ;;
+    esac
+}
+
+# Try in order until one works
+for strategy in venv user brew; do
+    install_deps "$strategy" && break
+done
+```
+
+### Workspace Detection
+
+The plugin dir is typically in a dev repo (`~/dev-repos/plugin-name/`) and symlinked into Claude Code workspaces. The installer should auto-detect which workspace links to it:
+
+```zsh
+detect_workspace() {
+    # Search common workspace locations for a symlink pointing to this plugin
+    for ws in "$HOME/workspace" "$HOME/Workspace" "$HOME/Projects" "$HOME/myproject"; do
+        local link="$ws/.claude/skills/$PLUGIN_NAME"
+        if [ -L "$link" ] && [ "$(cd "$(readlink "$link")" 2>/dev/null && pwd)" = "$SCRIPT_DIR" ]; then
+            echo "$ws"; return 0
+        fi
+    done
+    return 1
+}
+
+WORKSPACE="${1:-}"  # Allow --workspace argument
+[ -z "$WORKSPACE" ] && WORKSPACE="$(detect_workspace 2>/dev/null)" || true
+
+if [ -n "$WORKSPACE" ]; then
+    DATA_DIR="$WORKSPACE/.claude/data/$PLUGIN_NAME"
+    mkdir -p "$DATA_DIR/logs" "$DATA_DIR/cache"
+else
+    DATA_DIR="$HOME/.config/$PLUGIN_NAME"
+    mkdir -p "$DATA_DIR/logs" "$DATA_DIR/cache"
+fi
+```
+
+### SKILL.md Symlink (Step Added in Installer)
+
+```zsh
+# Create SKILL.md symlink at root so Claude Code can discover the skill
+if [ ! -e "$SCRIPT_DIR/SKILL.md" ]; then
+    ln -s "skills/$PLUGIN_NAME/SKILL.md" "$SCRIPT_DIR/SKILL.md"
+    ok "SKILL.md symlink created"
+else
+    ok "SKILL.md symlink exists"
+fi
+```
+
+This symlink is committed to git (it's just a relative path). Without it, the skill won't appear in Claude Code.
+
+### Claude Code Registration (Different from Claude Desktop!)
+
+Claude Desktop uses `~/Library/Application Support/Claude/claude_desktop_config.json`. Claude Code uses `~/.claude/settings.json`. Both need the MCP server, and both must include `PLUGINNAME_DATA_DIR`:
+
+```python
+# Claude Code registration (Python snippet used in installer)
+import json, os
+
+code_config_path = os.path.expanduser("~/.claude/settings.json")
+if os.path.isfile(code_config_path):
+    with open(code_config_path) as f:
+        config = json.load(f)
+    config.setdefault("mcpServers", {})["your_mcp_server"] = {
+        "command": "/path/to/.venv/bin/python3",  # or python3 if system
+        "args": ["/path/to/mcp/server.py"],
+        "env": {"PLUGINNAME_DATA_DIR": "/path/to/workspace/.claude/data/plugin-name"},
+        "trust": True   # Required for Claude Code, not needed for Desktop
+    }
+    with open(code_config_path, "w") as f:
+        json.dump(config, f, indent=2)
+```
+
+**Key difference**: Claude Code entries need `"trust": True`. Claude Desktop does not.
+
+### Data Dir Env Var in MCP Registration
+
+Both registrations must include the data dir env var so the MCP server routes all runtime files to the workspace, not the dev repo:
+
+```json
+{
+  "command": "python3",
+  "args": ["/path/to/mcp/server.py"],
+  "env": {
+    "PLUGINNAME_DATA_DIR": "/path/to/workspace/.claude/data/plugin-name"
+  }
+}
+```
+
+This is what makes the data isolation work at runtime — without it, even if your config loader supports `PLUGINNAME_DATA_DIR`, the MCP server won't have it set.
+
+### --check Mode (What to Verify)
+
+```zsh
+# In --check mode, verify ALL of these:
+ok/warn "Python3: $(python3 --version)"
+ok/warn "Virtual env: $VENV_DIR"
+ok/warn "Package mcp: installed" / fail
+ok/warn "MCP server: compiles"
+ok/warn "SKILL.md symlink: exists"
+ok/warn "Persona config: $DATA_DIR/persona_config.json"
+ok/warn "Claude Desktop: MCP registered"
+ok/warn "Claude Code: MCP registered"
+ok/warn "Claude Code: PLUGINNAME_DATA_DIR configured"
+```
+
+### --uninstall Mode
+
+Must remove from BOTH configs:
+
+```python
+for config_path in [CLAUDE_CONFIG, CLAUDE_CODE_CONFIG]:
+    if os.path.isfile(config_path):
+        config = json.load(open(config_path))
+        config.get("mcpServers", {}).pop("your_mcp_server", None)
+        json.dump(config, open(config_path, "w"), indent=2)
+```
 
 ### Success Criteria
 
 - [ ] `#!/usr/bin/env zsh` shebang
 - [ ] `shell_compat.py scan install_plugin.sh` passes clean
-- [ ] Works on fresh macOS with only system Python
+- [ ] Handles Python 3.9 (system macOS) via multi-strategy venv installation
+- [ ] Creates `SKILL.md` symlink at plugin root
+- [ ] Registers MCP in **both** Claude Desktop and Claude Code
+- [ ] Both registrations include `PLUGINNAME_DATA_DIR` env var pointing to workspace
+- [ ] Data dir created in workspace, not in dev repo
 - [ ] Idempotent (safe to run multiple times)
-- [ ] Provides `--check` and `--uninstall` modes
+- [ ] Provides `--check`, `--uninstall`, `--workspace` modes
 - [ ] Clear error messages with fix suggestions
+- [ ] Self-test runs with `PLUGINNAME_DATA_DIR` set
 
 ---
 
@@ -487,6 +731,7 @@ scripts/persona_config.json
 logs/
 reports/
 cache/
+plans/
 *.html
 !references/*.html
 
@@ -562,7 +807,8 @@ Year, Author Name — MIT License (full text)
 git init
 git config user.name "your-github-username"
 git config user.email "ID+username@users.noreply.github.com"  # Use GitHub noreply!
-git add -A
+git status                    # Review what will be committed — verify .gitignore is working
+git add -A                    # Only after confirming no sensitive files are staged
 git commit -m "feat: initial release of PluginName vX.Y.Z"
 git remote add origin git@github.com:username/plugin-name.git
 git push -u origin main
@@ -572,7 +818,8 @@ git push -u origin main
 
 ### Success Criteria
 
-- [ ] `.gitignore` covers all sensitive/runtime files
+- [ ] `.gitignore` covers all sensitive/runtime files (configs, keys, logs, caches, `.venv/`)
+- [ ] `SKILL.md` symlink at root is committed: `git ls-files SKILL.md` shows it
 - [ ] `git status` shows no untracked sensitive files
 - [ ] README.md is complete and contains no company-specific data
 - [ ] CHANGELOG.md exists
@@ -657,6 +904,13 @@ After all agents report and fixes are applied:
 | Sensitive data in commit | Leaked credentials | Scrub + `.gitignore` + `git filter-branch` |
 | Missing `requirements.txt` | MCP server fails to start | List all pip dependencies |
 | No YAML frontmatter in SKILL.md | Skill not discovered by Claude | Add `---\nname:\ndescription:\n---` |
+| No `SKILL.md` at plugin root | Skill invisible to Claude Code | `ln -s skills/plugin-name/SKILL.md SKILL.md` |
+| Python 3.9 can't install `mcp` | `No matching distribution found` | Multi-strategy install: detect < 3.10, use Homebrew Python + venv |
+| MCP only in Claude Desktop | Works in Desktop, not Claude Code | Register in BOTH `claude_desktop_config.json` AND `~/.claude/settings.json` |
+| Claude Code entry missing `trust` | Permission prompts on every MCP call | Add `"trust": True` to Claude Code MCP entry |
+| No `PLUGINNAME_DATA_DIR` in MCP env | Runtime data saved to dev repo or XDG | Add env var to MCP server registration pointing to workspace data dir |
+| Data dir in dev repo | Runtime files get committed | Set `PLUGINNAME_DATA_DIR=<workspace>/.claude/data/<plugin>` and use `_get_data_dir()` |
+| Plugin dir is a symlink | `SCRIPT_DIR` resolves to real path, not symlink | Use `cd "$(dirname "$0")" && pwd` — this is correct, workspace detection needs symlink search |
 
 ---
 
@@ -669,12 +923,21 @@ PLUGIN READINESS CHECKLIST:
 
 [ ] plugin.json valid, version set, skills array populated
 [ ] SKILL.md + SKILL_SLIM.md in skills/plugin-name/ with YAML frontmatter
+[ ] SKILL.md symlink at plugin root → skills/plugin-name/SKILL.md (committed to git)
 [ ] MCP server compiles, all tools documented
 [ ] Config externalized to _get_data_dir(), template committed
+[ ] _get_data_dir() supports PLUGINNAME_DATA_DIR env var (3-tier: env → CLAUDE_PLUGIN_DATA → XDG)
 [ ] Zero sensitive data in any committed file (verified by grep)
 [ ] All .sh files use #!/usr/bin/env zsh, pass shell_compat scan
-[ ] install_plugin.sh works with --check, --uninstall modes
-[ ] .gitignore covers: configs, keys, logs, caches, internal docs
+[ ] install_plugin.sh handles Python 3.9 via multi-strategy install (venv/user/brew)
+[ ] install_plugin.sh creates SKILL.md symlink at plugin root
+[ ] install_plugin.sh registers MCP in Claude Desktop (claude_desktop_config.json)
+[ ] install_plugin.sh registers MCP in Claude Code (~/.claude/settings.json, trust: true)
+[ ] Both MCP registrations include PLUGINNAME_DATA_DIR env var → workspace/.claude/data/plugin/
+[ ] install_plugin.sh supports --check, --uninstall, --workspace modes
+[ ] --check verifies both Desktop and Claude Code registrations + PLUGINNAME_DATA_DIR
+[ ] --uninstall removes from both Desktop and Claude Code
+[ ] .gitignore covers: configs, keys, logs, caches, internal docs, .venv/
 [ ] README.md, CHANGELOG.md, LICENSE present
 [ ] Git remote set, noreply email configured, pushed successfully
 [ ] Deep audit passed with ≥99.9% confidence
