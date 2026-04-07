@@ -1,11 +1,12 @@
 #!/usr/bin/env zsh
 # Pre-commit hook for llm-prompt-templates
-# Validates that all template files have PROMPT_METADATA version tracking
+# Validates that all template files have PROMPT_METADATA and that
+# version/changelog were actually updated when a template is modified.
 
 # Check if any template files are staged
 STAGED_TEMPLATES=("${(@f)$(git diff --cached --name-only --diff-filter=ACM | grep -E '^(claude|gemini|openai|llama|mistral)/__.*\.md$')}")
 
-# Exit if no templates staged (grep returns empty)
+# Exit if no templates staged
 if [[ ${#STAGED_TEMPLATES[@]} -eq 0 ]] || [[ -z "${STAGED_TEMPLATES[1]}" ]]; then
   exit 0
 fi
@@ -15,20 +16,54 @@ echo "🔍 Validating PROMPT_METADATA on staged templates..."
 ERRORS=0
 for file in "${STAGED_TEMPLATES[@]}"; do
   [[ -z "$file" ]] && continue
+
+  # Check 1: PROMPT_METADATA block exists
   if ! grep -q 'PROMPT_METADATA' "$file"; then
     echo "  ✗ $file — Missing PROMPT_METADATA block"
     ERRORS=$((ERRORS + 1))
+    continue
+  fi
+
+  # Check 2: For MODIFIED files (not new), verify the metadata block was updated
+  if git show HEAD:"$file" &>/dev/null; then
+    # File exists in previous commit — check if metadata was changed
+    OLD_VERSION=$(git show HEAD:"$file" 2>/dev/null | grep -oE 'version: [0-9]+\.[0-9]+' | head -1)
+    NEW_VERSION=$(grep -oE 'version: [0-9]+\.[0-9]+' "$file" | head -1)
+
+    OLD_COUNT=$(git show HEAD:"$file" 2>/dev/null | grep -oE 'iteration_count: [0-9]+' | head -1)
+    NEW_COUNT=$(grep -oE 'iteration_count: [0-9]+' "$file" | head -1)
+
+    OLD_CHANGELOG_LINES=$(git show HEAD:"$file" 2>/dev/null | grep -c '  - v' || echo "0")
+    NEW_CHANGELOG_LINES=$(grep -c '  - v' "$file" || echo "0")
+
+    if [[ "$OLD_VERSION" == "$NEW_VERSION" ]]; then
+      echo "  ✗ $file — version not incremented ($OLD_VERSION)"
+      ERRORS=$((ERRORS + 1))
+    fi
+
+    if [[ "$OLD_COUNT" == "$NEW_COUNT" ]]; then
+      echo "  ✗ $file — iteration_count not incremented ($OLD_COUNT)"
+      ERRORS=$((ERRORS + 1))
+    fi
+
+    if [[ "$OLD_CHANGELOG_LINES" -ge "$NEW_CHANGELOG_LINES" ]]; then
+      echo "  ✗ $file — no new changelog entry added"
+      ERRORS=$((ERRORS + 1))
+    fi
   fi
 done
 
 if [[ $ERRORS -gt 0 ]]; then
   echo ""
-  echo "✗ $ERRORS template(s) missing version tracking."
-  echo "  Every template must have a PROMPT_METADATA block at the top."
-  echo "  Run: node scripts/validate-templates.mjs --fix"
+  echo "✗ $ERRORS issue(s) found. Before committing template changes:"
+  echo "  1. Increment 'version' (0.1 minor, 1.0 major)"
+  echo "  2. Increment 'iteration_count'"
+  echo "  3. Update 'last_model' and 'last_date'"
+  echo "  4. Append a changelog entry"
   echo ""
+  echo "  Or run: node scripts/validate-templates.mjs --fix"
   exit 1
 fi
 
-# Full validation
+# Full field validation
 node scripts/validate-templates.mjs
