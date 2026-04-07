@@ -1,3 +1,13 @@
+<!-- PROMPT_METADATA
+version: 1.2
+iteration_count: 2
+last_model: Gemini 2.5 Pro (Thinking)
+last_date: 2026-04-07
+changelog:
+  - v1.0 (2026-04-07, Gemini 2.5 Pro): Initial creation from project-specific manual
+  - v1.2 (2026-04-07, Gemini 2.5 Pro (Thinking)): 21-point critical review — added anti-patterns, directory layout, rollback for committed state, multi-extension discovery, self-contained agent prompt, hardened sync script
+-->
+
 # Shared-Core Extraction Manual
 
 > A generic, project-agnostic playbook for consolidating duplicated operational modules into a single maintained source of truth with automated sync and drift detection.

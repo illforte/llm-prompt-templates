@@ -1,3 +1,12 @@
+<!-- PROMPT_METADATA
+version: 1.0
+iteration_count: 1
+last_model: Claude Opus 4
+last_date: 2026-04-01
+changelog:
+  - v1.0 (2026-04-01, Claude Opus 4): Initial creation — 8-phase plugin creation workflow with confidence loops
+-->
+
 # Claude Plugin Creation Manual
 
 **A reusable prompt for transforming any existing skill/command into a marketplace-ready Claude plugin.**
