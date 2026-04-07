@@ -25,6 +25,7 @@ mistral/     — Mistral AI
 | Template | LLM | Description |
 |---|---|---|
 | `__claude-PLUGIN_CREATION_MANUAL.md` | Claude | Transform existing skills/commands into marketplace-ready Claude plugins. Covers directory structure, config isolation, MCP servers, zsh compatibility, security audits, and confidence loops. |
+| `__gemini-SHARED_CORE_EXTRACTION_MANUAL.md` | Gemini | Find and eliminate duplicated operational modules across agents/services. Phased workflow (Discovery → Planning → Extraction → Verification → Hardening) with confidence scoring, effort estimation, sync script template, CI integration, and agent prompt. |
 
 ## Contributing
 
