@@ -1,16 +1,118 @@
 <!-- PROMPT_METADATA
-version: 1.2
-iteration_count: 2
-last_model: Gemini 2.5 Pro (Thinking)
-last_date: 2026-04-07
+version: 1.3
+iteration_count: 3
+last_model: Claude Opus 4.6
+last_date: 2026-04-08
 changelog:
   - v1.0 (2026-04-07, Gemini 2.5 Pro): Initial creation from project-specific manual
   - v1.2 (2026-04-07, Gemini 2.5 Pro (Thinking)): 21-point critical review — added anti-patterns, directory layout, rollback for committed state, multi-extension discovery, self-contained agent prompt, hardened sync script
+  - v1.3 (2026-04-08, Claude Opus 4.6): Sprint orchestration — 3-sprint execution plan with sub-agent parallelism per extraction candidate, mandatory sprint gates, anti-shortcut rules, session handoff template
 -->
 
 # Shared-Core Extraction Manual
 
 > A generic, project-agnostic playbook for consolidating duplicated operational modules into a single maintained source of truth with automated sync and drift detection.
+
+---
+
+## Sprint Orchestration
+
+> This section turns the manual from a linear prompt into sprint-sized work packages that each get the LLM's full attention. Without sprints, late phases get skimmed.
+
+### Why Sprints
+
+Long prompts degrade execution quality at the tail. Sprints fix this:
+
+1. **Bounded scope** — each sprint is 1–2 sections, completable in one session at max effort
+2. **Forced depth** — the sprint gate blocks progression until all criteria are verified
+3. **Sub-agent parallelism** — independent extraction candidates are processed concurrently
+4. **Clean handoff** — if a session hits its effort ceiling, state is saved for the next session
+
+### Sprint Plan
+
+| Sprint | Sections | Sub-Agent Parallelism | Focus |
+|---|---|---|---|
+| **Sprint 1: Discover & Plan** | §1–4 (Goal, Estimation, Categories, When-Not-To) + §5 Phase 1–2 (Discovery, Planning) | Phase 1 discovery can parallelize per-service scans | Build inventory, assign scores, decide extract/skip |
+| **Sprint 2: Extract & Verify** | §5 Phase 3–4 (Extraction, Verification) per candidate batch | One sub-agent per extraction candidate (parallel) | Create shared sources, wire sync, verify each |
+| **Sprint 3: Harden & Ship** | §5 Phase 5 (Hardening) + §6–12 (Layout, Sync, Checks, CI, Rollback, Anti-patterns, Quality) | Phase 5 CI setup ∥ §12 quality checklist | Lock down with CI gates, document, prevent re-duplication |
+
+### Sprint 2: Sub-Agent-Per-Candidate Pattern
+
+Sprint 2 is where parallelism matters most. Each extraction candidate from Sprint 1's tracking table runs as an independent sub-agent:
+
+```
+Sprint 1 output: Tracking table with N candidates scored ≥ 3
+  ↓
+Sprint 2:
+  Agent 1: Extract candidate #1 (auth-helper, XS, confidence 5)    ← parallel
+  Agent 2: Extract candidate #2 (config-loader, S, confidence 4)   ← parallel
+  Agent 3: Extract candidate #3 (logging-setup, M, confidence 3)   ← parallel
+    ↓ wait for all ↓
+  Merge: verify no cross-candidate conflicts
+  Gate: all Phase 3+4 checklists pass for every candidate
+```
+
+**Each sub-agent gets:**
+- The full Phase 3 + Phase 4 instructions (not a summary)
+- Its specific candidate from the tracking table
+- The sync script path and mapping format
+- The verification commands
+
+**Rules:**
+- Only parallelize candidates that share NO target files
+- If candidates conflict (same target), process them sequentially
+- Each sub-agent returns the Phase 4 verification checklist with evidence
+- A sub-agent failure does NOT block other candidates — retry it independently
+
+### Sprint Gate (Mandatory)
+
+After all work in a sprint is complete, verify:
+
+```markdown
+## Sprint N Gate
+
+### Per-candidate (Sprint 2) or per-section checklist:
+- [ ] Criterion — [VERIFIED: evidence (file path, command output, diff)]
+...
+
+### Gate Result
+- All criteria verified: YES / NO
+- Blockers: [list any failures]
+- Proceed to Sprint N+1: YES / NO
+```
+
+**The next sprint CANNOT begin until the gate passes.**
+
+### Anti-Shortcut Rules
+
+1. **No skipping phases** — even if a candidate "seems trivial," run the full verification checklist.
+2. **No combining sprints** — complete the Sprint 1 gate before extracting anything in Sprint 2.
+3. **No summary-instead-of-doing** — "This module would be extracted to..." is not completion. Create the file, run sync, verify.
+4. **Sub-agents must return evidence** — "looks good" is not evidence. Return the drift-check output, typecheck output, and diff.
+5. **Extraction candidates scored < 3 go to DIVERGENCE-LOG.md** — never silently skip them.
+
+### Session Handoff Template
+
+If a session hits its effort ceiling mid-sprint, save state:
+
+```json
+{
+  "manual": "Shared-Core Extraction",
+  "version": "1.3",
+  "current_sprint": 2,
+  "completed_sprints": [1],
+  "tracking_table": [
+    {"module": "auth-helper", "confidence": 5, "effort": "XS", "status": "extracted"},
+    {"module": "config-loader", "confidence": 4, "effort": "S", "status": "in_progress — sync done, typecheck pending"},
+    {"module": "logging-setup", "confidence": 3, "effort": "M", "status": "pending"}
+  ],
+  "next_action": "Complete config-loader verification (typecheck + build), then extract logging-setup",
+  "files_created": ["shared-core/sources/auth-helper.ts"],
+  "timestamp": "2026-04-08T15:00:00Z"
+}
+```
+
+**Next session**: Load this. Resume from `next_action`. Do NOT re-run Sprint 1 discovery.
 
 ---
 
@@ -528,13 +630,22 @@ For each finding, provide:
 
 ## Execution (if instructed to execute, not just audit)
 
-1. Start with the highest-impact, lowest-effort candidate.
-2. Create or update the sync script (must support --check mode).
-3. Add the source → target mapping.
-4. Run sync, verify all affected consumers (typecheck, build, tests).
-5. Ensure every generated file has the provenance banner:
+Follow the Sprint Orchestration at the top of this manual:
+- Sprint 1 (this audit) produces the tracking table.
+- Sprint 2 extracts candidates in parallel (one sub-agent per candidate).
+- Sprint 3 hardens with CI gates and documentation.
+
+For each extraction candidate:
+1. Create or update the sync script (must support --check mode).
+2. Add the source → target mapping.
+3. Run sync, verify all affected consumers (typecheck, build, tests).
+4. Ensure every generated file has the provenance banner:
      // Generated file. Do not edit directly.
      // Source: <path>
      // Sync: <command>
-6. Commit with a descriptive message referencing the extraction.
+5. Commit with a descriptive message referencing the extraction.
+6. Return the Phase 4 verification checklist with evidence for the sprint gate.
+
+If session effort ceiling is reached mid-execution, save the handoff
+template from the Sprint Orchestration section and stop cleanly.
 ```
