@@ -36,6 +36,26 @@ changelog:
 node scripts/validate-templates.mjs
 ```
 
+### Legacy Reference Templates
+
+If a template has been demoted into a workspace-owned legacy reference for a canonical workflow, keep it machine-readable.
+
+Required additional metadata fields:
+
+```markdown
+canonical_capability_id: post_sprint_cleanup
+canonical_source_of_truth: .agents/workflows/post_sprint_cleanup.md
+canonical_sync_mode: generated-snapshot
+canonical_source_sha256: <64 hex chars>
+```
+
+Rules:
+
+1. Treat these files as generated reference snapshots, not author-edited primary prompts.
+2. Do not hand-edit the generated snapshot body.
+3. Regenerate from the workspace root with:
+   `node .ai/bin/sync-legacy-prompt-references.mjs --cwd /Users/florian.scheugenpflug/Projekte`
+
 ### File Naming
 
 Templates: `__<model>-<TITLE_IN_CAPS>.md`

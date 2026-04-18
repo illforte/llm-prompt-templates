@@ -6,6 +6,8 @@
  * Guardrail script for llm-prompt-templates repo.
  * Validates that every template file (__*.md) has a PROMPT_METADATA block
  * with required fields: version, iteration_count, last_model, last_date, changelog.
+ * If a template is marked as a canonical workspace legacy reference, validate
+ * its canonical metadata fields as well.
  *
  * Usage:
  *   node scripts/validate-templates.mjs           # validate all templates
@@ -98,6 +100,22 @@ for (const relPath of templates) {
   if (missing.length > 0) {
     errors.push({ file: relPath, issue: `Missing fields: ${missing.join(', ')}` });
     continue;
+  }
+
+  const isCanonicalLegacyReference = /^canonical_source_of_truth:\s*.+/m.test(metaBlock);
+  if (isCanonicalLegacyReference) {
+    const canonicalMissing = [];
+    for (const field of ['canonical_capability_id', 'canonical_sync_mode', 'canonical_source_sha256']) {
+      const regex = new RegExp(`^${field}:\\s*.+`, 'm');
+      if (!regex.test(metaBlock)) {
+        canonicalMissing.push(field);
+      }
+    }
+
+    if (canonicalMissing.length > 0) {
+      errors.push({ file: relPath, issue: `Missing canonical legacy fields: ${canonicalMissing.join(', ')}` });
+      continue;
+    }
   }
 
   // Check for placeholder values

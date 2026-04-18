@@ -1,258 +1,385 @@
 <!-- PROMPT_METADATA
-version: 1.0
-iteration_count: 1
-last_model: Claude Opus 4.6
-last_date: 2026-04-12
+version: 1.1
+iteration_count: 2
+last_model: GPT-5.4 Codex
+last_date: 2026-04-18
+canonical_capability_id: post_sprint_cleanup
+canonical_source_of_truth: .agents/workflows/post_sprint_cleanup.md
+canonical_sync_mode: generated-snapshot
+canonical_source_sha256: 6bb18adafbed3dd102309f3dab7990c7f6190bfff154c033eafd9018d4e32829
 changelog:
+  - v1.1 (2026-04-18, GPT-5.4 Codex): Converted the template into a generated legacy reference snapshot with canonical source-of-truth metadata
   - v1.0 (2026-04-12, Claude Opus 4.6): Initial creation — processed from unprocessed draft, added fenced code blocks, fixed typos, tightened structure, added success criteria and anti-patterns
 -->
 
-# Post-Sprint Cleanup — Docs, Changelog, Version, Audit
+# Legacy Reference — post_sprint_cleanup
 
-You are performing a full post-sprint cleanup pass on this repository. Apply maximum effort across documentation, versioning, code quality, and dependency health. Do not stop until every phase reaches 99.9% confidence.
+> Legacy reference only.
+> Canonical source of truth: `.agents/workflows/post_sprint_cleanup.md`
+> Sync mode: generated snapshot
+> Canonical SHA256: `6bb18adafbed3dd102309f3dab7990c7f6190bfff154c033eafd9018d4e32829`
+> Do not edit the generated snapshot below by hand.
+> Regenerate via: `node .ai/bin/sync-legacy-prompt-references.mjs --cwd <path>`
 
----
+<!-- LEGACY_CANONICAL_SNAPSHOT_START -->
+# Post Sprint Cleanup
 
-## Confidence Loop (Applied Per Phase)
+Canonical post-sprint cleanup workflow for this workspace.
 
-After completing each phase, self-assess before moving on:
+Use this when a repo needs a real closure pass after implementation, not just a quick polish pass.
 
-1. Assign a **confidence score** (0–100%): "How certain am I this area is clean, current, and consistent?"
-2. If **< 99.9%**: identify the gaps, fix them, re-assess.
-3. If **≥ 99.9%**: move to the next phase.
-4. Log each assessment: `Phase N — [Name] → confidence X% → [gaps or "none"]`
+## Goal
 
----
+Close a sprint or implementation slice with:
 
-## Shared Principles
+- manifest-driven scope
+- repo-aware docs review
+- changelog and version consistency
+- real validation using the repo's actual lint, type, test, and build commands
+- evidence-backed reporting instead of confidence theater
 
-- **Single source of truth** — reference, don't repeat. No duplicated information across docs.
-- **Top-down consistency** — parent documents define rules; children inherit. No contradictions.
-- **If it changed, document it** — code changes without doc updates are incomplete.
-- **Automate verification** — use grep/glob to prove claims. Don't eyeball.
+## Source Of Truth
 
----
+- Commands: `.agents/workflows/post_sprint_cleanup.md`
+- Claude compatibility output: `.claude/commands/post_sprint_cleanup.md`
+- Gemini compatibility output: `.gemini/commands/post_sprint_cleanup.toml`
+- Codex skill wrapper: `.agents/skills/post-sprint-cleanup/SKILL.md`
+- Workspace operator helper: `.ai/bin/run-post-sprint-cleanup.mjs`
 
-## Phase 1 — Inventory Changed Files
+Do not evolve a separate Claude-only or Gemini-only version by hand.
 
-Build a manifest of everything that changed since the last release baseline:
+## Operator Entry Point
 
-```bash
-git diff --name-only <baseline>..HEAD
-git log --oneline <baseline>..HEAD
-```
-
-Categorize into:
-
-- Files added / modified / deleted
-- Features added / changed / removed
-- Bug fixes applied
-- Breaking changes introduced
-- Dependencies added / upgraded / removed
-
-This manifest drives every subsequent phase. Keep it accessible throughout the process.
-
----
-
-## Phase 2 — Hierarchical Markdown Audit
-
-Scan all markdown files top-down through the repository.
-
-### 2a. Root-Level Docs
-
-- **README.md** — Does it reflect current state? Are setup steps still valid? Badges correct?
-- **CLAUDE.md / GEMINI.md / equivalent** — Do instructions match current architecture? Any stale file paths or dead references?
-- **CONTRIBUTING.md** — Still accurate?
-- **LICENSE** — Unchanged unless project scope changed.
-- **CHANGELOG.md** — Handled in Phase 3.
-
-### 2b. Nested / Module-Level Docs
-
-Discover all markdown files:
+For a workspace-owned entry point that all three tools can share, use:
 
 ```bash
-find . -name "*.md" -not -path "*/node_modules/*" -not -path "*/.git/*"
+node .ai/bin/run-post-sprint-cleanup.mjs --cwd <target-path> --mode fast
 ```
 
-For each file, verify:
+For release-oriented or broader sweeps:
 
-- [ ] References point to files/paths that still exist
-- [ ] Code examples still compile/run
-- [ ] No stale feature descriptions (removed or renamed features)
-- [ ] Parent ↔ child consistency (no contradictions in hierarchy)
-- [ ] Internal links and anchors resolve correctly
+```bash
+node .ai/bin/run-post-sprint-cleanup.mjs --cwd <target-path> --mode deep
+```
 
-### 2c. Inline Documentation
+If you already collected observed results, feed them back in with:
 
-- JSDoc / PHPDoc / docblocks on changed functions — still accurate?
-- API endpoint docs match actual routes and payloads?
-- Config file comments match actual behavior?
+```bash
+node .ai/bin/run-post-sprint-cleanup.mjs --cwd <target-path> --mode fast --results-file <cleanup-results.json>
+```
 
-### Audit Function (Apply to Each File)
+## Modes
 
-For every markdown file, check:
+### Default: `fast`
 
-1. Dead links (internal refs to deleted files or anchors)
-2. Stale version numbers
-3. Outdated code examples
-4. TODO/FIXME/HACK comments that should have been resolved this sprint
-5. Inconsistencies with parent-level documentation
+Use for normal post-sprint closure.
 
----
+Scope:
+
+- changed files since baseline
+- touched docs plus root docs
+- version and changelog sources
+- repo validation commands that can actually run
+
+### Optional: `deep`
+
+Use for release candidates, migrations, or suspicious drift.
+
+Adds:
+
+- full markdown sweep for the repo
+- broader dead-code and dependency checks
+- stronger config and environment comparison
+
+## Rules
+
+1. Work from the nearest repo root, not the whole `/Projekte` workspace, unless the user explicitly asks for a workspace-wide audit.
+2. Do not invent lint, test, build, or version commands. Detect them from the repo.
+3. Do not claim a guardrail passed unless the command was actually run and the result was observed.
+4. If a check cannot run, report the blocker explicitly.
+5. Prefer changed scope first. Only expand to full-repo sweep when mode or risk justifies it.
+
+## Phase 0 — Detect Scope
+
+Start by running:
+
+```bash
+node .ai/bin/detect-post-sprint-cleanup-context.mjs --cwd <target-path> --format pretty
+```
+
+Use that detector as the default source for:
+
+- repo root resolution
+- baseline selection
+- version source discovery
+- changelog candidates
+- truthful validation-command selection
+
+If the detector returns no selected command for a category, inspect its alternatives manually instead of guessing.
+
+For report generation, use:
+
+```bash
+node .ai/bin/generate-post-sprint-cleanup-report.mjs --cwd <target-path> --mode fast --results-file <cleanup-results.json>
+```
+
+That generator produces a structured JSON and Markdown report under `.ai/reports/`.
+
+Launcher integration:
+
+- normal session launch prints a small cleanup hint unless disabled
+- set `AI_SESSION_PREFLIGHT_CLEANUP_MODE=fast` or `AI_SESSION_PREFLIGHT_CLEANUP_MODE=deep` to run the helper before opening Claude, Gemini, or Codex
+- set `AI_SESSION_SHOW_POST_SPRINT_HINT=0` to silence the startup hint
+
+### 0a. Identify the target repo
+
+- Resolve the repo root from the current working directory.
+- If no repo root is found, stop and ask for the intended repo path.
+
+### 0b. Choose the baseline
+
+Use the first valid baseline in this order:
+
+1. User-supplied baseline
+2. Latest reachable tag
+3. Merge-base against the default branch
+4. `HEAD~1` as a fallback for small local cleanup passes
+
+Record which baseline was used.
+
+### 0c. Build the manifest
+
+Collect:
+
+- changed files
+- commit log since baseline
+- files added, modified, deleted
+- user-visible features changed
+- fixes applied
+- breaking changes
+- dependency changes
+
+This manifest drives every later phase.
+
+## Phase 1 — Repo Context
+
+Before running cleanup, inspect the repo's real shape.
+
+Read only what is needed:
+
+- root `README.md`
+- root `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `composer.json`, `Makefile`, `justfile`, or equivalent
+- repo `.ai/repo/**` if present
+- changed module docs and config files
+
+Determine:
+
+- package manager
+- monorepo vs single package
+- changelog location
+- version source(s)
+- real validation commands
+- docs that act as parent sources of truth
+
+The detector should provide the first pass for this. Manual review is only for categories it leaves unresolved or warns about.
+
+### Repo Overlay Support
+
+The detector also reads an optional repo-local cleanup overlay at:
+
+```text
+.ai/repo/post-sprint-cleanup.json
+```
+
+Use that file only when the repo needs cleanup-specific truth that generic detection cannot infer cleanly, for example:
+
+- extracted repos whose root `package.json` still looks monorepo-shaped
+- mixed stacks with one intended primary validation surface
+- repos that keep changelogs or primary docs below the root
+- repos that should explicitly behave as `release-strict` or `utility-light`
+
+Allowed overlay concerns:
+
+- `docs.rootDocs`
+- `docs.changelogCandidates`
+- `docs.docsRoots`
+- `version.sources`
+- `validation.commands.<category>`
+- `policy.profile`
+
+Profiles:
+
+- `default`: normal behavior
+- `release-strict`: docs, changelog, and version guardrails should not remain implicit
+- `utility-light`: changelog may legitimately be absent unless the repo declares one
+
+Do not use the overlay as a dumping ground for generic repo metadata. Keep it narrow and capability-specific.
+
+## Phase 2 — Documentation Audit
+
+### Default scope
+
+Audit:
+
+- root docs: `README.md`, `CLAUDE.md`, `GEMINI.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, `LICENSE` when present
+- every changed markdown file
+- changed config comments or inline docs that were touched by the sprint
+
+### Deep scope
+
+If mode is `deep`, audit all repo markdown files except ignored directories such as:
+
+- `node_modules`
+- `.git`
+- build output
+- vendored third-party code
+
+### Checks
+
+For each relevant doc:
+
+- referenced files and paths still exist
+- code samples still match current commands and file paths
+- feature descriptions match current behavior
+- parent and child docs do not contradict each other
+- version strings are current
+- internal links and anchors resolve
 
 ## Phase 3 — Changelog
 
-Follow [Keep a Changelog](https://keepachangelog.com/) format or the project's established convention.
+Use the repo's established format.
 
-### Categories (include only non-empty sections):
+If there is no established format, use a simple Keep a Changelog structure.
 
-- **Added** — new features
-- **Changed** — behavior changes to existing features
-- **Deprecated** — soon-to-be-removed features
-- **Removed** — features removed this sprint
-- **Fixed** — bug fixes
-- **Security** — vulnerability fixes
-- **Breaking** — changes requiring migration (flag prominently)
+Rules:
 
-### Rules
+- write one entry per user-visible change, not per commit
+- write for downstream readers
+- avoid internal-refactor noise unless it changes usage or operations
+- ensure every manifest item appears in docs, changelog, or both
 
-- One entry per user-visible change, not per commit.
-- Write for the reader (user or downstream developer), not the author.
-- Link to ticket or PR where applicable.
-- If an `Unreleased` section exists, move entries under the new version heading.
-- No duplicate entries.
-- Cross-check against the Phase 1 manifest — every change must appear somewhere.
+## Phase 4 — Version Consistency
 
----
+Determine bump type from the manifest:
 
-## Phase 4 — Version Bump
+- major for breaking change
+- minor for new non-breaking feature work
+- patch for fixes only
 
-### Determine Bump Type from Manifest
+Update only the version sources that actually exist in the repo.
 
-- **MAJOR** — breaking changes present
-- **MINOR** — new features, no breaking changes
-- **PATCH** — bug fixes only
+Typical sources:
 
-### Update All Version References
+- `package.json`
+- lockfiles when required by the package manager
+- `pyproject.toml`
+- `Cargo.toml`
+- `composer.json`
+- image tags or release metadata
+- versioned docs or badges
 
-Find every version reference in the project:
+Verify stale references with search after changes.
 
-```bash
-grep -rn "version" --include="*.json" --include="*.md" --include="*.yaml" --include="*.yml" --include="*.toml"
-```
+## Phase 5 — Validation
 
-Checklist:
+### 5a. Detect commands from the repo
 
-- [ ] `package.json` / `composer.json` / `pyproject.toml` / version file
-- [ ] Lock files regenerated (e.g., `npm install`, `composer update --lock`, `pip freeze`)
-- [ ] CHANGELOG heading matches new version + date
-- [ ] README badges (if version-pinned)
-- [ ] Docker tags / image refs (if applicable)
-- [ ] API version headers (if applicable)
-- [ ] Zero old-version references remain (verify with grep)
+Use the repo's actual scripts and tools.
 
----
+Examples:
 
-## Phase 5 — Audits
+- `package.json` scripts
+- workspace task runners
+- `make` targets
+- language-native test and lint commands
+- documented validation commands in repo docs
 
-Run each audit. Fix all findings before moving on.
+### 5b. Run the narrowest truthful validation set
 
-### 5a. Code Quality
+Minimum target:
 
-- [ ] Linter clean (project linter: eslint, phpcs, ruff, etc.)
-- [ ] Type check clean (tsc, phpstan, mypy, etc.)
-- [ ] No `console.log` / `var_dump` / `print()` debug leftovers in production code
-- [ ] No commented-out code blocks (remove or convert to a tracked ticket)
+- lint if defined
+- type check if defined
+- tests if defined
+- production build if defined
 
-### 5b. Dependency Audit
+Prefer repo-native commands over generic fallback tools.
 
-- [ ] `npm audit` / `composer audit` / `pip audit` — zero critical or high findings
-- [ ] No unused dependencies (use `depcheck`, `deptry`, or manual review)
-- [ ] No unlocked floating versions in production dependencies
+### 5c. Supplemental audits
 
-### 5c. Dead Code
+Run when they are already supported by the repo or clearly cheap and relevant:
 
-- [ ] No unused exports, functions, or classes
-- [ ] No orphaned files (not imported anywhere, not entry points)
-- [ ] No stale feature flags or environment variables
-
-### 5d. Config & Environment
-
-- [ ] `.env.example` matches all variables actually read by code
-- [ ] No secrets committed (grep for patterns: `key=`, `token=`, `password=`, `secret=`)
-- [ ] Config defaults are sane for production
-
-### 5e. Test Health
-
-- [ ] All tests pass
-- [ ] No skipped/disabled tests that should be re-enabled
-- [ ] New features have test coverage
-- [ ] No snapshot tests with stale snapshots
-
----
+- dependency audit
+- dead-code detection
+- env example parity
+- debug statement grep
+- commented-out code grep
+- secrets grep
 
 ## Phase 6 — Guardrail Verification
 
-Verify each guardrail is intact and enforced:
+Only mark a guardrail as passed when there is direct evidence.
 
-| Guardrail | Verified By |
-|---|---|
-| Lint passes | Run linter → zero errors |
-| Types pass | Run type checker → zero errors |
-| Tests pass | Run full test suite → zero failures |
-| Build succeeds | Run production build → zero errors |
-| No secrets in repo | Grep for credential patterns → zero matches |
-| Docs current | Phase 2 confidence ≥ 99.9% |
-| Changelog current | Phase 3 confidence ≥ 99.9% |
-| Version consistent | Phase 4 grep confirms zero stale refs |
-| No dead code | Phase 5c complete |
-| Dependencies clean | Phase 5b → zero audit findings |
+Guardrails:
 
-**If any guardrail fails:** fix it, re-run that guardrail, then re-verify all downstream guardrails that may have been affected.
+- docs reviewed
+- changelog reviewed
+- version consistency checked
+- lint status known
+- types status known
+- test status known
+- build status known
+- secret scan status known
+- dependency audit status known when supported
 
----
+If any item is unknown, report it as unknown, not passed.
 
-## Output Format
+## Output
 
-Report per phase:
+Return a structured report with:
 
-```
-Phase N — [Name]
-Confidence: X%
-Files touched: [list]
-Changes: [summary]
-Gaps remaining: [list or "none"]
-```
+- target repo
+- cleanup overlay path and profile
+- mode
+- baseline used
+- manifest summary
+- files touched
+- docs updated
+- changelog changes
+- version changes
+- validation commands run
+- pass/fail/blocked status per guardrail
+- remaining gaps
 
-Final summary:
+When the repo matters enough to preserve an audit trail, materialize the report with:
 
-```
-CLEANUP COMPLETE
-Final confidence: X%
-Phases completed: N/6
-Version: old → new (bump type)
-Changelog entries added: N
-Docs updated: [file list]
-Audit findings fixed: N
-Guardrails verified: [all pass / details]
+```bash
+node .ai/bin/generate-post-sprint-cleanup-report.mjs --cwd <target-path> --mode <fast|deep> --results-file <cleanup-results.json>
 ```
 
----
+Minimal `cleanup-results.json` shape:
 
-## Anti-Patterns
+```json
+{
+  "docs": { "status": "passed", "files": ["README.md"] },
+  "changelog": { "status": "passed", "files": ["CHANGELOG.md"] },
+  "version": { "status": "blocked", "notes": "Version bump deferred." },
+  "commands": [
+    { "category": "lint", "status": "passed", "command": "pnpm run lint", "exitCode": 0 },
+    { "category": "test", "status": "failed", "command": "pnpm run test", "exitCode": 1 }
+  ],
+  "filesTouched": ["README.md", "CHANGELOG.md"],
+  "blockers": ["Typecheck not defined at repo root."]
+}
+```
 
-- **Skipping the manifest** — jumping straight into docs without knowing what changed leads to missed updates.
-- **Eyeballing instead of grepping** — always use automated search to verify claims like "no stale version refs."
-- **Documenting implementation details** — changelog entries should describe user-visible impact, not internal refactors.
-- **Batching all fixes at the end** — fix issues as you find them, phase by phase. Batching creates cascading rework.
+## Decision Standard
 
----
+This workflow is complete when:
 
-## Success Criteria
-
-The cleanup is complete when:
-
-1. Every phase has reached ≥ 99.9% confidence.
-2. All guardrails in Phase 6 pass.
-3. The final summary report is produced with no gaps remaining.
-4. A single commit (or small commit series) captures all cleanup changes.
+- the manifest is explicit
+- docs, changelog, and version sources were actually checked
+- validation claims are evidence-backed
+- unresolved blockers are named clearly
+- no parallel Claude-only or Gemini-only cleanup logic was introduced
+<!-- LEGACY_CANONICAL_SNAPSHOT_END -->
