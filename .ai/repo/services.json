@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "layer": "repo",
+  "description": "Repo-local MCP services for llm-prompt-templates.",
+  "services": {
+    "codebase": {
+      "enabled": true,
+      "transport": "streamable-http",
+      "url": "http://127.0.0.1:8411/sse/codebase",
+      "runtime": "llm-prompt-templates-repo",
+      "tags": [
+        "repo",
+        "lazy-singleton",
+        "knowledge",
+        "codebase"
+      ]
+    },
+    "codebase-rag": {
+      "enabled": true,
+      "transport": "streamable-http",
+      "url": "https://rag.mcp.lair404.xyz/mcp/llm-prompt-templates",
+      "runtime": "remote-repo-rag",
+      "tags": [
+        "repo",
+        "remote",
+        "knowledge",
+        "codebase-rag",
+        "live"
+      ],
+      "contract": {
+        "schema": "repo-codebase-rag-contract-v1",
+        "status": "live",
+        "repoSlug": "llm-prompt-templates",
+        "contractFile": "{{workspaceRoot}}/.ai/layers/workspace/repo-codebase-rag-contract.json"
+      }
+    },
+    "docs": {
+      "enabled": true,
+      "transport": "sse",
+      "url": "http://127.0.0.1:8411/sse/docs",
+      "runtime": "llm-prompt-templates-repo",
+      "tags": [
+        "repo",
+        "lazy-singleton",
+        "knowledge"
+      ]
+    },
+    "filesystem-enhanced": {
+      "enabled": true,
+      "transport": "sse",
+      "url": "http://127.0.0.1:8411/sse/filesystem-enhanced",
+      "runtime": "llm-prompt-templates-repo",
+      "tags": [
+        "repo",
+        "lazy-singleton",
+        "filesystem"
+      ]
+    }
+  }
+}

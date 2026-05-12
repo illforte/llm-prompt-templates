@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "runtimeId": "llm-prompt-templates-repo",
+  "name": "ai-llm-prompt-templates-repo",
+  "port": 8411,
+  "pidFile": "{{home}}/.ai/run/llm-prompt-templates-repo-mcp.pid",
+  "logFile": "{{home}}/.ai/run/llm-prompt-templates-repo-mcp.log",
+  "hubScript": "{{workspaceRoot}}/.ai/host/layered-sse-hub.mjs",
+  "context": {
+    "workspaceRoot": "/Users/florian.scheugenpflug/Projekte",
+    "repoRoot": "/Users/florian.scheugenpflug/Projekte/llm-prompt-templates",
+    "runtimeHostRoot": "/Users/florian.scheugenpflug/Projekte/.ai/host",
+    "sharedMcpProviderRoot": "/Users/florian.scheugenpflug/Projekte/weretradeInfantrie_1.0"
+  },
+  "dotenv": [
+    "{{sharedMcpProviderRoot}}/.env"
+  ],
+  "services": {
+    "codebase": {
+      "entry": "{{workspaceRoot}}/.ai/host/run-service-entry.mjs",
+      "env": {
+        "PROJECT_ROOT": "{{repoRoot}}",
+        "REPO_ROOT": "{{repoRoot}}",
+        "MCP_SERVER_NAME": "llm-prompt-templates-codebase",
+        "MCP_PROVIDER_ENTRY_RELATIVE": "codebase-server/index.js",
+        "CODEBASE_INDEX_PATH": "{{repoRoot}}/.ai/repo/codebase-index.json",
+        "CODEBASE_INDEX_ADAPTER": "mixed-stack-v2",
+        "CODEBASE_REPO_SLUG": "llm-prompt-templates",
+        "CODEBASE_DEFAULT_APP_TYPE": "docs",
+        "CODEBASE_REBUILD_ON_START": "1"
+      }
+    },
+    "docs": {
+      "entry": "{{workspaceRoot}}/.ai/host/run-service-entry.mjs",
+      "env": {
+        "PROJECT_ROOT": "{{repoRoot}}",
+        "REPO_ROOT": "{{repoRoot}}",
+        "MCP_SERVER_NAME": "llm-prompt-templates-docs",
+        "MCP_PROVIDER_ENTRY_RELATIVE": "docs-server/index.js"
+      }
+    },
+    "filesystem-enhanced": {
+      "entry": "{{workspaceRoot}}/.ai/host/run-service-entry.mjs",
+      "env": {
+        "ALLOWED_DIRECTORIES": "{{repoRoot}}",
+        "MCP_SERVER_NAME": "llm-prompt-templates-filesystem",
+        "MCP_PROVIDER_ENTRY_RELATIVE": "filesystem-enhanced/index.js"
+      }
+    }
+  }
+}
